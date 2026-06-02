@@ -588,7 +588,9 @@
                 width: 100%;
                 max-width: 420px;
             }
-            .modal.large { max-width: 680px; }
+            .modal.large {
+                max-width: 680px;
+            }
             .modal h3 {
                 font-size: 15px;
                 font-weight: 600;
@@ -2658,7 +2660,9 @@
             document
                 .getElementById("btn-stats")
                 .addEventListener("click", function () {
-                    document.getElementById("stats-modal").classList.add("open");
+                    document
+                        .getElementById("stats-modal")
+                        .classList.add("open");
                     renderCharts();
                 });
 
@@ -2706,7 +2710,9 @@
             document
                 .getElementById("btn-stats-close")
                 .addEventListener("click", function () {
-                    document.getElementById("stats-modal").classList.remove("open");
+                    document
+                        .getElementById("stats-modal")
+                        .classList.remove("open");
                 });
 
             document
