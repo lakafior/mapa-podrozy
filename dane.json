@@ -2,11 +2,91 @@
     {
         "id": "PL",
         "date": "1993-01-01",
-        "notes": "kraj urodzenia"
+        "notes": "kraj urodzenia",
+        "tag": "prywatnie"
     },
     {
         "id": "GR",
         "date": "2025-08-01",
-        "notes": "Korfu wakacje"
+        "notes": "Korfu wakacje",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "HR",
+        "date": "2023-06-06",
+        "notes": "Wakacje",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "CZ",
+        "date": "2021-09-12",
+        "notes": "City Break",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "DE",
+        "date": "2021-08-29",
+        "notes": "City Break",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "MD",
+        "date": "2025-12-05",
+        "notes": "Wakacje",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "ME",
+        "date": "2022-09-03",
+        "notes": "Wakacje",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "NL",
+        "date": "2014-06-08",
+        "notes": "Praca",
+        "tag": "sluzbowo"
+    },
+    {
+        "id": "NO",
+        "date": "2025-06-11",
+        "notes": "Wypad w góry",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "SK",
+        "date": "2024-09-27",
+        "notes": "Wypad w góry",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "UA",
+        "date": "2010-08-20",
+        "notes": "Wymiana",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "GB",
+        "date": "2017-09-23",
+        "notes": "City Break",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "VN",
+        "date": "2024-03-10",
+        "notes": "Wakacje",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "FR",
+        "date": "1997-06-08",
+        "notes": "City Break",
+        "tag": "prywatnie"
+    },
+    {
+        "id": "IT",
+        "date": "2000-06-06",
+        "notes": "Wakacje",
+        "tag": "prywatnie"
     }
 ]
