@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#161b22">
+    <meta name="description" content="Śledź odwiedzone kraje na mapie świata">
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Podróże">
+    <link rel="apple-touch-icon" href="icon-192.svg">
+
+    <title>Mapa Podróży</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/css/jsvectormap.min.css">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #2da44e;
+            --accent-hover: #3fb950;
+            --accent-dim: #1a3a26;
+            --danger: #f85149;
+            --radius: 10px;
+            /* safe area dla iPhone z noci/Dynamic Island */
+            --safe-top:    env(safe-area-inset-top,    0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left:   env(safe-area-inset-left,   0px);
+            --safe-right:  env(safe-area-inset-right,  0px);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* Blokuj tekst przed przypadkowym zaznaczaniem podczas scrollowania */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            min-height: 100dvh; /* dynamic viewport dla iOS Safari */
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+            /* płynny scroll na iOS */
+            -webkit-overflow-scrolling: touch;
+            /* zapobiegaj highlight przy tapnięciu */
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: none;
+        }
+
+        /* ── HEADER ── */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 20px;
+            /* bezpieczny obszar dla notcha/Dynamic Island */
+            padding-top: calc(14px + var(--safe-top));
+            padding-left:  calc(20px + var(--safe-left));
+            padding-right: calc(20px + var(--safe-right));
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-title { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .header-title span { font-size: 20px; }
+        .badge {
+            background: var(--accent-dim);
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--accent);
+        }
+
+        /* ── MAIN LAYOUT ── */
+        main {
+            padding: 16px;
+            padding-left:  calc(16px + var(--safe-left));
+            padding-right: calc(16px + var(--safe-right));
+            /* home indicator na iPhone */
+            padding-bottom: calc(24px + var(--safe-bottom));
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        @media (min-width: 1024px) {
+            main {
+                display: grid;
+                grid-template-columns: 1fr 340px;
+                grid-template-rows: auto auto 1fr;
+                padding: 20px 24px;
+                gap: 20px;
+            }
+            .stats-section  { grid-column: 1 / -1; }
+            .map-section    { grid-column: 1; grid-row: 2 / 4; }
+            .form-section   { grid-column: 2; grid-row: 2; }
+            .list-section   { grid-column: 2; grid-row: 3; }
+        }
+
+        /* ── STATS ── */
+        .stats-section { display: flex; flex-direction: column; gap: 10px; }
+
+        .stats-top {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        @media (min-width: 600px) { .stats-top { grid-template-columns: repeat(4, 1fr); } }
+        @media (min-width: 1024px) { .stats-top { grid-template-columns: repeat(7, 1fr); } }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px 14px;
+            text-align: center;
+        }
+        .stat-card.primary { border-color: var(--accent); background: var(--accent-dim); }
+        .stat-val { font-size: 22px; font-weight: 700; color: var(--accent); line-height: 1; }
+        .stat-card.primary .stat-val { font-size: 26px; }
+        .stat-lbl { font-size: 10px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+        .stat-pct { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+        .continents-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px 20px;
+        }
+        @media (min-width: 600px) { .continents-bar { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 1024px) { .continents-bar { grid-template-columns: repeat(6, 1fr); } }
+
+        .cont-item { display: flex; flex-direction: column; gap: 4px; }
+        .cont-header { display: flex; justify-content: space-between; align-items: baseline; }
+        .cont-name { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+        .cont-count { font-size: 11px; color: var(--text); font-weight: 600; }
+        .progress-track {
+            background: var(--surface2);
+            border-radius: 4px;
+            height: 5px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 4px;
+            transition: width 0.4s ease;
+        }
+
+        /* ── MAP ── */
+        .map-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            min-height: 320px;
+        }
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+        #map-container {
+            width: 100%;
+            height: 340px;
+        }
+        @media (min-width: 1024px) { #map-container { height: 460px; } }
+
+        .jsvectormap-tip {
+            background: var(--surface2) !important;
+            border: 1px solid var(--border) !important;
+            color: var(--text) !important;
+            font-family: inherit !important;
+            font-size: 12px !important;
+            padding: 6px 10px !important;
+            border-radius: 6px !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+        }
+        .map-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        /* ── FORM & LIST ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 5px; color: var(--text-muted); }
+
+        select, input[type="date"], textarea {
+            width: 100%;
+            padding: 10px 12px;
+            /* font-size 16px zapobiega automatycznemu zoomowi na iOS */
+            font-size: 16px;
+            min-height: 44px;
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            outline: none;
+            transition: border-color 0.15s;
+            font-family: inherit;
+            /* wyłącz domyślne style iOS */
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+        select option { background: var(--surface2); }
+
+        .btn {
+            width: 100%;
+            padding: 12px 16px;
+            min-height: 44px; /* Apple HIG minimum touch target */
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
+            transition: background 0.15s, opacity 0.15s;
+            /* poprawa responsywności dotyku na iOS */
+            touch-action: manipulation;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-secondary {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            margin-top: 8px;
+        }
+        .btn-secondary:hover { border-color: var(--text-muted); }
+
+        /* ── VISITED LIST ── */
+        .list-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .visited-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            overflow-y: auto;
+            max-height: 320px;
+        }
+
+        .visit-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 4px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.1s;
+            border-radius: 4px;
+        }
+        .visit-row:last-child { border-bottom: none; }
+        .visit-row:hover { background: var(--surface2); }
+
+        .visit-flag { font-size: 20px; flex-shrink: 0; width: 28px; text-align: center; }
+        .visit-info { flex: 1; min-width: 0; }
+        .visit-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .visit-date { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+        .btn-delete {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 6px 8px;
+            min-width: 36px;
+            min-height: 44px;
+            border-radius: 4px;
+            line-height: 1;
+            flex-shrink: 0;
+            transition: color 0.15s, background 0.15s;
+            touch-action: manipulation;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-delete:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
+
+        .empty-state {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+            padding: 24px 0;
+        }
+        .empty-state .emoji { font-size: 32px; display: block; margin-bottom: 8px; }
+
+        /* ── GITHUB MODAL ── */
+        .modal-overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            width: 100%;
+            max-width: 420px;
+        }
+        .modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+        .modal .hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: -8px;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        .modal .hint a { color: var(--accent); text-decoration: none; }
+        .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .modal-actions .btn { flex: 1; margin-top: 0; }
+
+        .sync-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            justify-content: center;
+        }
+        .sync-status {
+            font-size: 11px;
+            text-align: center;
+            margin-top: 6px;
+            min-height: 16px;
+            color: var(--text-muted);
+        }
+        .sync-status.ok    { color: var(--accent); }
+        .sync-status.error { color: var(--danger); }
+        .sync-status.loading { color: #58a6ff; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-title">
+        <span>&#x2708;&#xFE0F;</span> Mapa Podróży
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+        <div class="badge" id="total-badge">0 krajów</div>
+        <button class="btn btn-secondary" id="btn-gh-settings" style="width:auto;padding:5px 10px;margin:0;font-size:12px" title="Ustawienia GitHub">&#x2699;&#xFE0F; GitHub</button>
+    </div>
+</header>
+
+<!-- MODAL: ustawienia GitHub -->
+<div class="modal-overlay" id="gh-modal">
+    <div class="modal">
+        <h3>&#x1F511; Połączenie z GitHub</h3>
+        <div class="form-group">
+            <label>Użytkownik GitHub</label>
+            <input type="text" id="gh-user" placeholder="np. jan-kowalski">
+        </div>
+        <div class="form-group">
+            <label>Nazwa repozytorium</label>
+            <input type="text" id="gh-repo" placeholder="np. moja-mapa">
+        </div>
+        <div class="form-group">
+            <label>Personal Access Token (PAT)</label>
+            <input type="password" id="gh-token" placeholder="github_pat_...">
+            <p class="hint">
+                Utwórz token na <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a>.<br>
+                Wymagane uprawnienie: <strong>Contents &rarr; Read and write</strong> (fine-grained) lub zakres <strong>repo</strong> (classic).<br>
+                Token jest przechowywany wyłącznie w Twoim localStorage.
+            </p>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" id="btn-gh-cancel">Anuluj</button>
+            <button class="btn btn-primary" id="btn-gh-save">💾 Zapisz ustawienia</button>
+        </div>
+    </div>
+</div>
+
+<main>
+    <!-- STATS -->
+    <section class="stats-section">
+        <div class="stats-top" id="stats-top"></div>
+        <div class="continents-bar" id="continents-bar"></div>
+    </section>
+
+    <!-- MAP -->
+    <section class="map-section">
+        <div class="section-title">&#x1F5FA; Mapa świata</div>
+        <div id="map-container"></div>
+        <p class="map-hint" id="map-hint-text">Kliknij kraj na mapie, aby go dodać lub edytować</p>
+    </section>
+
+    <!-- FORM -->
+    <section class="form-section card">
+        <div class="section-title">&#x2795; Dodaj kraj</div>
+        <form id="travel-form">
+            <div class="form-group">
+                <label for="country-select">Kraj</label>
+                <select id="country-select" required></select>
+            </div>
+            <div class="form-group">
+                <label for="visit-date">Data wizyty</label>
+                <input type="date" id="visit-date">
+            </div>
+            <div class="form-group">
+                <label for="visit-notes">Notatki</label>
+                <textarea id="visit-notes" rows="3" placeholder="Wspomnienia z podróży..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Zapisz kraj</button>
+        </form>
+    </section>
+
+    <!-- LIST -->
+    <section class="list-section">
+        <div class="section-title" style="margin-bottom: 8px;">&#x1F4CB; Odwiedzone kraje</div>
+        <div class="visited-list" id="visited-list"></div>
+        <button class="btn btn-primary sync-btn" id="btn-push" style="margin-top:12px">
+            &#x2601;&#xFE0F; Zapisz na GitHub
+        </button>
+        <div class="sync-status" id="sync-status"></div>
+        <button class="btn btn-secondary" id="btn-export" style="margin-top:6px">&#x2B07; Eksportuj dane.json lokalnie</button>
+    </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/js/jsvectormap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/maps/world.js"></script>
+<script>
+    // ── Słownik krajów ──────────────────────────────────────────────────────────
+    const dictionary = {"PL":{"name":"Polska","cont":"Europa","flag":"\uD83C\uDDF5\uD83C\uDDF1"},"DE":{"name":"Niemcy","cont":"Europa","flag":"\uD83C\uDDE9\uD83C\uDDEA"},"FR":{"name":"Francja","cont":"Europa","flag":"\uD83C\uDDEB\uD83C\uDDF7"},"GB":{"name":"Wielka Brytania","cont":"Europa","flag":"\uD83C\uDDEC\uD83C\uDDE7"},"IE":{"name":"Irlandia","cont":"Europa","flag":"\uD83C\uDDEE\uD83C\uDDEA"},"NL":{"name":"Holandia","cont":"Europa","flag":"\uD83C\uDDF3\uD83C\uDDF1"},"NO":{"name":"Norwegia","cont":"Europa","flag":"\uD83C\uDDF3\uD83C\uDDF4"},"SE":{"name":"Szwecja","cont":"Europa","flag":"\uD83C\uDDF8\uD83C\uDDEA"},"FI":{"name":"Finlandia","cont":"Europa","flag":"\uD83C\uDDEB\uD83C\uDDEE"},"IS":{"name":"Islandia","cont":"Europa","flag":"\uD83C\uDDEE\uD83C\uDDF8"},"BY":{"name":"Białoruś","cont":"Europa","flag":"\uD83C\uDDE7\uD83C\uDDFE"},"UA":{"name":"Ukraina","cont":"Europa","flag":"\uD83C\uDDFA\uD83C\uDDE6"},"MD":{"name":"Mołdawia","cont":"Europa","flag":"\uD83C\uDDF2\uD83C\uDDE9"},"PT":{"name":"Portugalia","cont":"Europa","flag":"\uD83C\uDDF5\uD83C\uDDF9"},"ES":{"name":"Hiszpania","cont":"Europa","flag":"\uD83C\uDDEA\uD83C\uDDF8"},"CH":{"name":"Szwajcaria","cont":"Europa","flag":"\uD83C\uDDE8\uD83C\uDDED"},"AT":{"name":"Austria","cont":"Europa","flag":"\uD83C\uDDE6\uD83C\uDDF9"},"CZ":{"name":"Czechy","cont":"Europa","flag":"\uD83C\uDDE8\uD83C\uDDFF"},"SK":{"name":"Słowacja","cont":"Europa","flag":"\uD83C\uDDF8\uD83C\uDDF0"},"HU":{"name":"Węgry","cont":"Europa","flag":"\uD83C\uDDED\uD83C\uDDFA"},"RO":{"name":"Rumunia","cont":"Europa","flag":"\uD83C\uDDF7\uD83C\uDDF4"},"IT":{"name":"Włochy","cont":"Europa","flag":"\uD83C\uDDEE\uD83C\uDDF9"},"SI":{"name":"Słowenia","cont":"Europa","flag":"\uD83C\uDDF8\uD83C\uDDEE"},"HR":{"name":"Chorwacja","cont":"Europa","flag":"\uD83C\uDDED\uD83C\uDDF7"},"BA":{"name":"Bośnia i Hercegowina","cont":"Europa","flag":"\uD83C\uDDE7\uD83C\uDDE6"},"RS":{"name":"Serbia","cont":"Europa","flag":"\uD83C\uDDF7\uD83C\uDDF8"},"BG":{"name":"Bułgaria","cont":"Europa","flag":"\uD83C\uDDE7\uD83C\uDDEC"},"GR":{"name":"Grecja","cont":"Europa","flag":"\uD83C\uDDEC\uD83C\uDDF7"},"CY":{"name":"Cypr","cont":"Europa","flag":"\uD83C\uDDE8\uD83C\uDDFE"},"EE":{"name":"Estonia","cont":"Europa","flag":"\uD83C\uDDEA\uD83C\uDDEA"},"LV":{"name":"Łotwa","cont":"Europa","flag":"\uD83C\uDDF1\uD83C\uDDFB"},"LT":{"name":"Litwa","cont":"Europa","flag":"\uD83C\uDDF1\uD83C\uDDF9"},"LU":{"name":"Luksemburg","cont":"Europa","flag":"\uD83C\uDDF1\uD83C\uDDFA"},"BE":{"name":"Belgia","cont":"Europa","flag":"\uD83C\uDDE7\uD83C\uDDEA"},"DK":{"name":"Dania","cont":"Europa","flag":"\uD83C\uDDE9\uD83C\uDDF0"},"MK":{"name":"Macedonia Płn.","cont":"Europa","flag":"\uD83C\uDDF2\uD83C\uDDF0"},"AL":{"name":"Albania","cont":"Europa","flag":"\uD83C\uDDE6\uD83C\uDDF1"},"ME":{"name":"Czarnogóra","cont":"Europa","flag":"\uD83C\uDDF2\uD83C\uDDEA"},"MT":{"name":"Malta","cont":"Europa","flag":"\uD83C\uDDF2\uD83C\uDDF9"},"CA":{"name":"Kanada","cont":"Ameryka Północna","flag":"\uD83C\uDDE8\uD83C\uDDE6"},"US":{"name":"Stany Zjednoczone","cont":"Ameryka Północna","flag":"\uD83C\uDDFA\uD83C\uDDF8"},"MX":{"name":"Meksyk","cont":"Ameryka Północna","flag":"\uD83C\uDDF2\uD83C\uDDFD"},"GL":{"name":"Grenlandia","cont":"Ameryka Północna","flag":"\uD83C\uDDEC\uD83C\uDDF1"},"CU":{"name":"Kuba","cont":"Ameryka Północna","flag":"\uD83C\uDDE8\uD83C\uDDFA"},"BS":{"name":"Bahamy","cont":"Ameryka Północna","flag":"\uD83C\uDDE7\uD83C\uDDF8"},"JM":{"name":"Jamajka","cont":"Ameryka Północna","flag":"\uD83C\uDDEF\uD83C\uDDF2"},"HT":{"name":"Haiti","cont":"Ameryka Północna","flag":"\uD83C\uDDED\uD83C\uDDF9"},"DO":{"name":"Dominikana","cont":"Ameryka Północna","flag":"\uD83C\uDDE9\uD83C\uDDF4"},"GT":{"name":"Gwatemala","cont":"Ameryka Północna","flag":"\uD83C\uDDEC\uD83C\uDDF9"},"BZ":{"name":"Belize","cont":"Ameryka Północna","flag":"\uD83C\uDDE7\uD83C\uDDFF"},"HN":{"name":"Honduras","cont":"Ameryka Północna","flag":"\uD83C\uDDED\uD83C\uDDF3"},"SV":{"name":"Salwador","cont":"Ameryka Północna","flag":"\uD83C\uDDF8\uD83C\uDDFB"},"NI":{"name":"Nikaragua","cont":"Ameryka Północna","flag":"\uD83C\uDDF3\uD83C\uDDEE"},"CR":{"name":"Kostaryka","cont":"Ameryka Północna","flag":"\uD83C\uDDE8\uD83C\uDDF7"},"PA":{"name":"Panama","cont":"Ameryka Północna","flag":"\uD83C\uDDF5\uD83C\uDDE6"},"CO":{"name":"Kolumbia","cont":"Ameryka Południowa","flag":"\uD83C\uDDE8\uD83C\uDDF4"},"VE":{"name":"Wenezuela","cont":"Ameryka Południowa","flag":"\uD83C\uDDFB\uD83C\uDDEA"},"GY":{"name":"Gujana","cont":"Ameryka Południowa","flag":"\uD83C\uDDEC\uD83C\uDDFE"},"SR":{"name":"Surinam","cont":"Ameryka Południowa","flag":"\uD83C\uDDF8\uD83C\uDDF7"},"GF":{"name":"Gujana Franc.","cont":"Ameryka Południowa","flag":"\uD83C\uDDEC\uD83C\uDDEB"},"EC":{"name":"Ekwador","cont":"Ameryka Południowa","flag":"\uD83C\uDDEA\uD83C\uDDE8"},"PE":{"name":"Peru","cont":"Ameryka Południowa","flag":"\uD83C\uDDF5\uD83C\uDDEA"},"BR":{"name":"Brazylia","cont":"Ameryka Południowa","flag":"\uD83C\uDDE7\uD83C\uDDF7"},"BO":{"name":"Boliwia","cont":"Ameryka Południowa","flag":"\uD83C\uDDE7\uD83C\uDDF4"},"PY":{"name":"Paragwaj","cont":"Ameryka Południowa","flag":"\uD83C\uDDF5\uD83C\uDDFE"},"CL":{"name":"Chile","cont":"Ameryka Południowa","flag":"\uD83C\uDDE8\uD83C\uDDF1"},"AR":{"name":"Argentyna","cont":"Ameryka Południowa","flag":"\uD83C\uDDE6\uD83C\uDDF7"},"UY":{"name":"Urugwaj","cont":"Ameryka Południowa","flag":"\uD83C\uDDFA\uD83C\uDDFE"},"RU":{"name":"Rosja","cont":"Azja","flag":"\uD83C\uDDF7\uD83C\uDDFA"},"KZ":{"name":"Kazachstan","cont":"Azja","flag":"\uD83C\uDDF0\uD83C\uDDFF"},"MN":{"name":"Mongolia","cont":"Azja","flag":"\uD83C\uDDF2\uD83C\uDDF3"},"CN":{"name":"Chiny","cont":"Azja","flag":"\uD83C\uDDE8\uD83C\uDDF3"},"KP":{"name":"Korea Północna","cont":"Azja","flag":"\uD83C\uDDF0\uD83C\uDDF5"},"KR":{"name":"Korea Południowa","cont":"Azja","flag":"\uD83C\uDDF0\uD83C\uDDF7"},"JP":{"name":"Japonia","cont":"Azja","flag":"\uD83C\uDDEF\uD83C\uDDF5"},"TW":{"name":"Tajwan","cont":"Azja","flag":"\uD83C\uDDF9\uD83C\uDDFC"},"UZ":{"name":"Uzbekistan","cont":"Azja","flag":"\uD83C\uDDFA\uD83C\uDDFF"},"KG":{"name":"Kirgistan","cont":"Azja","flag":"\uD83C\uDDF0\uD83C\uDDEC"},"TJ":{"name":"Tadżykistan","cont":"Azja","flag":"\uD83C\uDDF9\uD83C\uDDEF"},"TM":{"name":"Turkmenistan","cont":"Azja","flag":"\uD83C\uDDF9\uD83C\uDDF2"},"AF":{"name":"Afganistan","cont":"Azja","flag":"\uD83C\uDDE6\uD83C\uDDEB"},"PK":{"name":"Pakistan","cont":"Azja","flag":"\uD83C\uDDF5\uD83C\uDDF0"},"IN":{"name":"Indie","cont":"Azja","flag":"\uD83C\uDDEE\uD83C\uDDF3"},"NP":{"name":"Nepal","cont":"Azja","flag":"\uD83C\uDDF3\uD83C\uDDF5"},"BT":{"name":"Butan","cont":"Azja","flag":"\uD83C\uDDE7\uD83C\uDDF9"},"BD":{"name":"Bangladesz","cont":"Azja","flag":"\uD83C\uDDE7\uD83C\uDDE9"},"MM":{"name":"Mjanma","cont":"Azja","flag":"\uD83C\uDDF2\uD83C\uDDF2"},"TH":{"name":"Tajlandia","cont":"Azja","flag":"\uD83C\uDDF9\uD83C\uDDED"},"LA":{"name":"Laos","cont":"Azja","flag":"\uD83C\uDDF1\uD83C\uDDE6"},"VN":{"name":"Wietnam","cont":"Azja","flag":"\uD83C\uDDFB\uD83C\uDDF3"},"KH":{"name":"Kambodża","cont":"Azja","flag":"\uD83C\uDDF0\uD83C\uDDED"},"MY":{"name":"Malezja","cont":"Azja","flag":"\uD83C\uDDF2\uD83C\uDDFE"},"SG":{"name":"Singapur","cont":"Azja","flag":"\uD83C\uDDF8\uD83C\uDDEC"},"ID":{"name":"Indonezja","cont":"Azja","flag":"\uD83C\uDDEE\uD83C\uDDE9"},"PH":{"name":"Filipiny","cont":"Azja","flag":"\uD83C\uDDF5\uD83C\uDDED"},"TL":{"name":"Timor Wsch.","cont":"Azja","flag":"\uD83C\uDDF9\uD83C\uDDF1"},"TR":{"name":"Turcja","cont":"Azja","flag":"\uD83C\uDDF9\uD83C\uDDF7"},"SY":{"name":"Syria","cont":"Azja","flag":"\uD83C\uDDF8\uD83C\uDDFE"},"LB":{"name":"Liban","cont":"Azja","flag":"\uD83C\uDDF1\uD83C\uDDE7"},"IL":{"name":"Izrael","cont":"Azja","flag":"\uD83C\uDDEE\uD83C\uDDF1"},"JO":{"name":"Jordania","cont":"Azja","flag":"\uD83C\uDDEF\uD83C\uDDF4"},"IQ":{"name":"Irak","cont":"Azja","flag":"\uD83C\uDDEE\uD83C\uDDF6"},"IR":{"name":"Iran","cont":"Azja","flag":"\uD83C\uDDEE\uD83C\uDDF7"},"SA":{"name":"Arabia Saudyjska","cont":"Azja","flag":"\uD83C\uDDF8\uD83C\uDDE6"},"YE":{"name":"Jemen","cont":"Azja","flag":"\uD83C\uDDFE\uD83C\uDDEA"},"OM":{"name":"Oman","cont":"Azja","flag":"\uD83C\uDDF4\uD83C\uDDF2"},"AE":{"name":"ZEA","cont":"Azja","flag":"\uD83C\uDDE6\uD83C\uDDEA"},"QA":{"name":"Katar","cont":"Azja","flag":"\uD83C\uDDF6\uD83C\uDDE6"},"BH":{"name":"Bahrajn","cont":"Azja","flag":"\uD83C\uDDE7\uD83C\uDDED"},"KW":{"name":"Kuwejt","cont":"Azja","flag":"\uD83C\uDDF0\uD83C\uDDFC"},"GE":{"name":"Gruzja","cont":"Azja","flag":"\uD83C\uDDEC\uD83C\uDDEA"},"AZ":{"name":"Azerbejdżan","cont":"Azja","flag":"\uD83C\uDDE6\uD83C\uDDFF"},"LK":{"name":"Sri Lanka","cont":"Azja","flag":"\uD83C\uDDF1\uD83C\uDDF0"},"AM":{"name":"Armenia","cont":"Azja","flag":"\uD83C\uDDE6\uD83C\uDDF2"},"MA":{"name":"Maroko","cont":"Afryka","flag":"\uD83C\uDDF2\uD83C\uDDE6"},"DZ":{"name":"Algieria","cont":"Afryka","flag":"\uD83C\uDDE9\uD83C\uDDFF"},"TN":{"name":"Tunezja","cont":"Afryka","flag":"\uD83C\uDDF9\uD83C\uDDF3"},"LY":{"name":"Libia","cont":"Afryka","flag":"\uD83C\uDDF1\uD83C\uDDFE"},"EG":{"name":"Egipt","cont":"Afryka","flag":"\uD83C\uDDEA\uD83C\uDDEC"},"MR":{"name":"Mauretania","cont":"Afryka","flag":"\uD83C\uDDF2\uD83C\uDDF7"},"ML":{"name":"Mali","cont":"Afryka","flag":"\uD83C\uDDF2\uD83C\uDDF1"},"BF":{"name":"Burkina Faso","cont":"Afryka","flag":"\uD83C\uDDE7\uD83C\uDDEB"},"NE":{"name":"Niger","cont":"Afryka","flag":"\uD83C\uDDF3\uD83C\uDDEA"},"TD":{"name":"Czad","cont":"Afryka","flag":"\uD83C\uDDF9\uD83C\uDDE9"},"SD":{"name":"Sudan","cont":"Afryka","flag":"\uD83C\uDDF8\uD83C\uDDE9"},"SS":{"name":"Sudan Południowy","cont":"Afryka","flag":"\uD83C\uDDF8\uD83C\uDDF8"},"ER":{"name":"Erytrea","cont":"Afryka","flag":"\uD83C\uDDEA\uD83C\uDDF7"},"ET":{"name":"Etiopia","cont":"Afryka","flag":"\uD83C\uDDEA\uD83C\uDDF9"},"DJ":{"name":"Dżibuti","cont":"Afryka","flag":"\uD83C\uDDE9\uD83C\uDDEF"},"SO":{"name":"Somalia","cont":"Afryka","flag":"\uD83C\uDDF8\uD83C\uDDF4"},"SN":{"name":"Senegal","cont":"Afryka","flag":"\uD83C\uDDF8\uD83C\uDDF3"},"GM":{"name":"Gambia","cont":"Afryka","flag":"\uD83C\uDDEC\uD83C\uDDF2"},"GW":{"name":"Gwinea Bissau","cont":"Afryka","flag":"\uD83C\uDDEC\uD83C\uDDFC"},"GN":{"name":"Gwinea","cont":"Afryka","flag":"\uD83C\uDDEC\uD83C\uDDF3"},"SL":{"name":"Sierra Leone","cont":"Afryka","flag":"\uD83C\uDDF8\uD83C\uDDF1"},"LR":{"name":"Liberia","cont":"Afryka","flag":"\uD83C\uDDF1\uD83C\uDDF7"},"CI":{"name":"Wybrzeże K.S.","cont":"Afryka","flag":"\uD83C\uDDE8\uD83C\uDDEE"},"GH":{"name":"Ghana","cont":"Afryka","flag":"\uD83C\uDDEC\uD83C\uDDED"},"TG":{"name":"Togo","cont":"Afryka","flag":"\uD83C\uDDF9\uD83C\uDDEC"},"BJ":{"name":"Benin","cont":"Afryka","flag":"\uD83C\uDDE7\uD83C\uDDEF"},"NG":{"name":"Nigeria","cont":"Afryka","flag":"\uD83C\uDDF3\uD83C\uDDEC"},"CM":{"name":"Kamerun","cont":"Afryka","flag":"\uD83C\uDDE8\uD83C\uDDF2"},"GQ":{"name":"Gwinea Równik.","cont":"Afryka","flag":"\uD83C\uDDEC\uD83C\uDDF6"},"GA":{"name":"Gabon","cont":"Afryka","flag":"\uD83C\uDDEC\uD83C\uDDE6"},"CG":{"name":"Kongo","cont":"Afryka","flag":"\uD83C\uDDE8\uD83C\uDDEC"},"CD":{"name":"DR Kongo","cont":"Afryka","flag":"\uD83C\uDDE8\uD83C\uDDE9"},"CF":{"name":"RŚA","cont":"Afryka","flag":"\uD83C\uDDE8\uD83C\uDDEB"},"UG":{"name":"Uganda","cont":"Afryka","flag":"\uD83C\uDDFA\uD83C\uDDEC"},"KE":{"name":"Kenia","cont":"Afryka","flag":"\uD83C\uDDF0\uD83C\uDDEA"},"TZ":{"name":"Tanzania","cont":"Afryka","flag":"\uD83C\uDDF9\uD83C\uDDFF"},"AO":{"name":"Angola","cont":"Afryka","flag":"\uD83C\uDDE6\uD83C\uDDF4"},"ZM":{"name":"Zambia","cont":"Afryka","flag":"\uD83C\uDDFF\uD83C\uDDF2"},"MW":{"name":"Malawi","cont":"Afryka","flag":"\uD83C\uDDF2\uD83C\uDDFC"},"MZ":{"name":"Mozambik","cont":"Afryka","flag":"\uD83C\uDDF2\uD83C\uDDFF"},"NA":{"name":"Namibia","cont":"Afryka","flag":"\uD83C\uDDF3\uD83C\uDDE6"},"BW":{"name":"Botswana","cont":"Afryka","flag":"\uD83C\uDDE7\uD83C\uDDFC"},"ZW":{"name":"Zimbabwe","cont":"Afryka","flag":"\uD83C\uDDFF\uD83C\uDDFC"},"MG":{"name":"Madagaskar","cont":"Afryka","flag":"\uD83C\uDDF2\uD83C\uDDEC"},"ZA":{"name":"RPA","cont":"Afryka","flag":"\uD83C\uDDFF\uD83C\uDDE6"},"LS":{"name":"Lesotho","cont":"Afryka","flag":"\uD83C\uDDF1\uD83C\uDDF8"},"SZ":{"name":"Eswatini","cont":"Afryka","flag":"\uD83C\uDDF8\uD83C\uDDFF"},"AU":{"name":"Australia","cont":"Australia i Oceania","flag":"\uD83C\uDDE6\uD83C\uDDFA"},"PG":{"name":"Papua-Nowa Gwinea","cont":"Australia i Oceania","flag":"\uD83C\uDDF5\uD83C\uDDEC"},"NZ":{"name":"Nowa Zelandia","cont":"Australia i Oceania","flag":"\uD83C\uDDF3\uD83C\uDDFF"},"FJ":{"name":"Fidżi","cont":"Australia i Oceania","flag":"\uD83C\uDDEB\uD83C\uDDEF"}};
+
+    const CONTINENTS = [
+        { key: "Europa",              icon: "\uD83C\uDFF0", total: 44 },
+        { key: "Azja",                icon: "\uD83C\uDFEF", total: 48 },
+        { key: "Afryka",              icon: "\uD83C\uDF0D", total: 54 },
+        { key: "Ameryka Północna",    icon: "\uD83D\uDDFD", total: 23 },
+        { key: "Ameryka Południowa",  icon: "\uD83C\uDF3F", total: 13 },
+        { key: "Australia i Oceania", icon: "\uD83E\uDD98", total: 14 },
+    ];
+    const TOTAL_COUNTRIES = CONTINENTS.reduce((s, c) => s + c.total, 0);
+
+    // ── Normalizacja legacy kodów ──────────────────────────────────────────────
+    const LEGACY_MAP = { "GAB": "GA", "Svalbard": "SJ" };
+    function normalize(id) { return LEGACY_MAP[id] || id; }
+
+    // ── Dane ──────────────────────────────────────────────────────────────────
+    let currentData = [];
+
+    // Załaduj dane z dane.json (działa na GitHub Pages i lokalnym serwerze)
+    fetch('dane.json')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            currentData = data.map(function(d) { return Object.assign({}, d, { id: normalize(d.id) }); });
+            initDropdown();
+            initMap();
+            render();
+        })
+        .catch(function() {
+            // Fallback: brak serwera (otwieranie pliku bezpośrednio)
+            document.getElementById('map-hint-text').textContent =
+                '⚠ Uruchom przez serwer HTTP (np. VS Code Live Server lub: python -m http.server)';
+            initDropdown();
+            initMap();
+            render();
+        });
+
+    function saveState() {
+        localStorage.setItem('travel_data_backup', JSON.stringify(currentData));
+        render();
+    }
+
+    // ── Mapa ──────────────────────────────────────────────────────────────────
+    let mapInstance = null;
+
+    function getVisitedCodes() {
+        return currentData.map(d => d.id.toLowerCase()).filter(c => c.length === 2);
+    }
+
+    function buildMap() {
+        // Niszcz poprzednią instancję przed stworzeniem nowej
+        if (mapInstance) {
+            try { mapInstance.destroy(); } catch(e) {}
+            mapInstance = null;
+        }
+        var container = document.getElementById('map-container');
+        container.innerHTML = '';
+
+        mapInstance = new jsVectorMap({
+            selector: '#map-container',
+            map: 'world',
+            backgroundColor: 'transparent',
+            zoomOnScroll: true,
+            zoomButtons: true,
+            regionStyle: {
+                initial:      { fill: '#30363d', stroke: '#161b22', strokeWidth: 0.5 },
+                hover:        { fill: '#58a6ff', cursor: 'pointer' },
+                selected:     { fill: '#2da44e' },
+                selectedHover:{ fill: '#3fb950' },
+            },
+            selectedRegions: getVisitedCodes(),
+            onRegionClick: function(e, code) {
+                var upper = code.toUpperCase();
+                if (dictionary[upper]) {
+                    document.getElementById('country-select').value = upper;
+                    var existing = currentData.find(function(i) { return i.id === upper; });
+                    document.getElementById('visit-date').value  = existing ? existing.date  || '' : '';
+                    document.getElementById('visit-notes').value = existing ? existing.notes || '' : '';
+                    document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            },
+            onRegionTooltipShow: function(e, tooltip, code) {
+                var upper = code.toUpperCase();
+                var info  = dictionary[upper];
+                var entry = currentData.find(function(i) { return i.id === upper; });
+                if (info) {
+                    var html = '<strong>' + info.flag + ' ' + info.name + '</strong>';
+                    if (entry && entry.date) html += '<br><span style="color:#8b949e">\uD83D\uDCC5 ' + entry.date + '</span>';
+                    if (entry)               html += '<br><span style="color:#3fb950">\u2713 Odwiedzony</span>';
+                    tooltip.selector.innerHTML = html;
+                }
+            },
+        });
+    }
+
+    // initMap wywoływane raz przy starcie (po załadowaniu dane.json)
+    function initMap() { buildMap(); }
+
+    // updateMap przebudowuje mapę z aktualnym stanem
+    function updateMap() { buildMap(); }
+
+    // ── Render UI ─────────────────────────────────────────────────────────────
+    function render() {
+        updateMap();
+
+        const count = currentData.length;
+        const pluralForm = count === 1 ? 'kraj' : count < 5 ? 'kraje' : 'krajów';
+        document.getElementById('total-badge').textContent = count + ' ' + pluralForm;
+
+        const pctWorld = Math.round(count / TOTAL_COUNTRIES * 100) || 0;
+        let topHTML = '<div class="stat-card primary"><div class="stat-val">' + count + '</div><div class="stat-lbl">\u0141\u0105cznie</div><div class="stat-pct">' + pctWorld + '% \u015bwiata</div></div>';
+
+        const contCounts = {};
+        CONTINENTS.forEach(c => { contCounts[c.key] = 0; });
+        currentData.forEach(d => {
+            const info = dictionary[d.id];
+            if (info && contCounts[info.cont] !== undefined) contCounts[info.cont]++;
+        });
+
+        CONTINENTS.forEach(c => {
+            const n = contCounts[c.key];
+            const shortName = c.key.replace('Ameryka ', 'Am. ').replace('Australia i Oceania', 'Oceania');
+            topHTML += '<div class="stat-card"><div class="stat-val">' + n + '</div><div class="stat-lbl">' + c.icon + ' ' + shortName + '</div><div class="stat-pct">' + (Math.round(n / c.total * 100) || 0) + '%</div></div>';
+        });
+        document.getElementById('stats-top').innerHTML = topHTML;
+
+        let barsHTML = '';
+        CONTINENTS.forEach(c => {
+            const n = contCounts[c.key];
+            const pct = Math.round(n / c.total * 100) || 0;
+            barsHTML += '<div class="cont-item"><div class="cont-header"><span class="cont-name">' + c.icon + ' ' + c.key + '</span><span class="cont-count">' + n + '/' + c.total + '</span></div><div class="progress-track"><div class="progress-fill" style="width:' + pct + '%"></div></div></div>';
+        });
+        document.getElementById('continents-bar').innerHTML = barsHTML;
+
+        const listEl = document.getElementById('visited-list');
+        if (!currentData.length) {
+            listEl.innerHTML = '<div class="empty-state"><span class="emoji">\uD83C\uDF0D</span>Brak odwiedzonych kraj\u00f3w.<br>Kliknij kraj na mapie, aby zacz\u0105\u0107!</div>';
+            return;
+        }
+        const sorted = currentData.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+        listEl.innerHTML = sorted.map(function(d) {
+            const info = dictionary[d.id] || { name: d.id, flag: '\uD83C\uDFF3\uFE0F' };
+            const notePreview = d.notes ? ' \u00b7 ' + d.notes.substring(0, 40) + (d.notes.length > 40 ? '\u2026' : '') : '';
+            const dateStr = d.date ? '\uD83D\uDCC5 ' + d.date : 'brak daty';
+            return '<div class="visit-row" onclick="selectCountry(\'' + d.id + '\')">'
+                + '<div class="visit-flag">' + info.flag + '</div>'
+                + '<div class="visit-info"><div class="visit-name">' + info.name + '</div>'
+                + '<div class="visit-date">' + dateStr + notePreview + '</div></div>'
+                + '<button class="btn-delete" onclick="event.stopPropagation();deleteCountry(\'' + d.id + '\')" title="Usu\u0144">\u2715</button>'
+                + '</div>';
+        }).join('');
+    }
+
+    // ── Akcje ─────────────────────────────────────────────────────────────────
+    window.selectCountry = function(id) {
+        document.getElementById('country-select').value = id;
+        const d = currentData.find(function(i) { return i.id === id; });
+        document.getElementById('visit-date').value  = d ? d.date  || '' : '';
+        document.getElementById('visit-notes').value = d ? d.notes || '' : '';
+        document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    window.deleteCountry = function(id) {
+        currentData = currentData.filter(function(i) { return i.id !== id; });
+        saveState();
+    };
+
+    document.getElementById('travel-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const id   = document.getElementById('country-select').value;
+        const item = { id: id, date: document.getElementById('visit-date').value, notes: document.getElementById('visit-notes').value };
+        const idx  = currentData.findIndex(function(i) { return i.id === id; });
+        if (idx > -1) currentData[idx] = item; else currentData.push(item);
+        saveState();
+        document.getElementById('visit-date').value  = '';
+        document.getElementById('visit-notes').value = '';
+    });
+
+    document.getElementById('btn-export').addEventListener('click', function() {
+        var content = JSON.stringify(currentData, null, 4) + '\n';
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+        a.download = 'dane.json';
+        a.click();
+    });
+
+    // ── GitHub API ────────────────────────────────────────────────────────────
+    function ghConfig() {
+        return {
+            user:  localStorage.getItem('gh_user')  || '',
+            repo:  localStorage.getItem('gh_repo')  || '',
+            token: localStorage.getItem('gh_token') || ''
+        };
+    }
+
+    function setStatus(msg, type) {
+        var el = document.getElementById('sync-status');
+        el.textContent = msg;
+        el.className = 'sync-status' + (type ? ' ' + type : '');
+    }
+
+    document.getElementById('btn-gh-settings').addEventListener('click', function() {
+        var cfg = ghConfig();
+        document.getElementById('gh-user').value  = cfg.user;
+        document.getElementById('gh-repo').value  = cfg.repo;
+        document.getElementById('gh-token').value = cfg.token;
+        document.getElementById('gh-modal').classList.add('open');
+    });
+
+    document.getElementById('btn-gh-cancel').addEventListener('click', function() {
+        document.getElementById('gh-modal').classList.remove('open');
+    });
+
+    document.getElementById('gh-modal').addEventListener('click', function(e) {
+        if (e.target === this) this.classList.remove('open');
+    });
+
+    document.getElementById('btn-gh-save').addEventListener('click', function() {
+        localStorage.setItem('gh_user',  document.getElementById('gh-user').value.trim());
+        localStorage.setItem('gh_repo',  document.getElementById('gh-repo').value.trim());
+        localStorage.setItem('gh_token', document.getElementById('gh-token').value.trim());
+        document.getElementById('gh-modal').classList.remove('open');
+        setStatus('Ustawienia zapisane.', 'ok');
+    });
+
+    document.getElementById('btn-push').addEventListener('click', function() {
+        var cfg = ghConfig();
+        if (!cfg.user || !cfg.repo || !cfg.token) {
+            document.getElementById('gh-modal').classList.add('open');
+            return;
+        }
+
+        setStatus('Łączenie z GitHub...', 'loading');
+        var apiUrl = 'https://api.github.com/repos/' + cfg.user + '/' + cfg.repo + '/contents/dane.json';
+        var headers = {
+            'Authorization': 'Bearer ' + cfg.token,
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28'
+        };
+
+        // Pobierz aktualny SHA pliku (wymagany do aktualizacji)
+        fetch(apiUrl, { headers: headers })
+            .then(function(r) { return r.json(); })
+            .then(function(meta) {
+                var sha = meta.sha || null;
+                var newContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentData, null, 4) + '\n')));
+                var now = new Date();
+                var dateStr = now.toLocaleDateString('pl-PL', { day:'2-digit', month:'2-digit', year:'numeric' });
+                var body = {
+                    message: 'Aktualizacja podróży – ' + dateStr,
+                    content: newContent,
+                    branch:  'main'
+                };
+                if (sha) body.sha = sha;
+
+                return fetch(apiUrl, {
+                    method: 'PUT',
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
+                    body: JSON.stringify(body)
+                });
+            })
+            .then(function(r) {
+                if (r.ok) {
+                    setStatus('✓ Zapisano na GitHub! Strona zaktualizuje się za chwilę.', 'ok');
+                } else {
+                    return r.json().then(function(e) {
+                        setStatus('Błąd: ' + (e.message || r.status), 'error');
+                    });
+                }
+            })
+            .catch(function(err) {
+                setStatus('Błąd połączenia: ' + err.message, 'error');
+            });
+    });
+
+    // ── Dropdown ──────────────────────────────────────────────────────────────
+    function initDropdown() {
+        const sel = document.getElementById('country-select');
+        const byContinent = {};
+        Object.entries(dictionary).sort(function(a, b) { return a[1].name.localeCompare(b[1].name, 'pl'); }).forEach(function(entry) {
+            const id = entry[0], info = entry[1];
+            if (!byContinent[info.cont]) byContinent[info.cont] = [];
+            byContinent[info.cont].push(Object.assign({ id: id }, info));
+        });
+        const contOrder = ["Europa","Azja","Afryka","Ameryka Północna","Ameryka Południowa","Australia i Oceania"];
+        contOrder.forEach(function(cont) {
+            if (!byContinent[cont]) return;
+            const grp = document.createElement('optgroup');
+            grp.label = cont;
+            byContinent[cont].forEach(function(c) {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.flag + ' ' + c.name;
+                grp.appendChild(opt);
+            });
+            sel.appendChild(grp);
+        });
+    }
+
+    // ── Init uruchamiany po załadowaniu dane.json (patrz fetch powyżej) ──────
+
+    // ── Service Worker (PWA) ───────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('./sw.js')
+                .catch(function(err) { console.warn('SW registration failed:', err); });
+        });
+    }
+</script>
+</body>
+</html>
