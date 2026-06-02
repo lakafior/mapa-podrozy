@@ -506,7 +506,9 @@
     let mapInstance = null;
 
     function getVisitedCodes() {
-        return currentData.map(d => d.id.toLowerCase()).filter(c => c.length === 2);
+        return currentData
+            .map(function(d) { return String(d.id || '').trim().toUpperCase(); })
+            .filter(function(c) { return c.length === 2; });
     }
 
     function buildMap() {
